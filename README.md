@@ -13,9 +13,8 @@ sorts them for you:
 - **Downloads** → neat folders by type: `PDF`, `Docs`, `Images`,
   `Installers`, `Zip`, `Media`, `Others`, with anything untouched for months
   moved into `Storage`.
-- **Screenshots** → one folder per month, split into `Receipts`,
-  `Errors_Code`, `Chats`, and `Uncategorized` by reading the text in each
-  image, with duplicates set aside for you to review.
+- **Screenshots** → one folder per month, like `Dec-2026`, with duplicates
+  set aside for you to review.
 - **Any other folder** you choose → the same tidy type folders.
 
 It's built to be trusted with your files:
@@ -52,12 +51,7 @@ Optionally, it can keep things tidy for you with a weekly or daily
 5. **Use it for real.** Choose **Downloads** or **Screenshots**. SortJunk
    finds those folders by itself, even if OneDrive has moved them. Scan,
    check the preview, and apply.
-6. **Optional: read text in screenshots.** Install
-   [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) with its
-   default settings so Screenshots mode can sort receipts, errors, and chats.
-   SortJunk finds it automatically. Without it, screenshots are sorted by
-   month only.
-7. **Optional: turn on Auto-Clean.** Click **Auto-Clean...**, tick
+6. **Optional: turn on Auto-Clean.** Click **Auto-Clean...**, tick
    **Clean up automatically**, choose daily or weekly and which folders, then
    click **Save**. To stop it, untick the box and click Save again.
 
@@ -74,12 +68,11 @@ stay where they are.
   where they are, or — if you tick the option (`--move-folders`) — they're
   moved whole into `My Folders`. Files untouched past the archive age
   (default 180 days) go into `Storage/<category>` as plain files.
-- **Screenshots mode** — sorts screenshots into
-  `<month>/Receipts`, `Errors_Code`, `Chats`, or `Uncategorized`, using the
-  text in the image when Tesseract OCR is installed (it's found automatically
-  in its standard install folder) and by month alone when it isn't. Exact and
-  near-duplicates go to `Duplicates_Found/` for you to review, while the
-  oldest copy of each group is sorted normally.
+- **Screenshots mode** — sorts screenshots into one folder per month
+  (`Dec-2026`, `Jan-2027`, …). Category subfolders made by older versions
+  (`Uncategorized`, `Receipts`, …) are flattened into their month folder.
+  Exact and near-duplicates go to `Duplicates_Found/` for you to review, while
+  the oldest copy of each group is sorted normally.
 - **Custom mode** — tidies any folder you pick: files from all subfolders are
   gathered into the same type folders, exact duplicates are set aside, files
   past the archive age are zipped into `_Archive_<month>/` (each original is
@@ -148,8 +141,7 @@ from this repository.
 
 ## Running from source
 
-Requires Python 3.13+. Tesseract OCR is optional
-([Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)).
+Requires Python 3.13+.
 
 ```powershell
 python -m venv .venv
@@ -177,8 +169,6 @@ Add `--apply` to make the changes (after a confirmation prompt).
 | `--undo` | Undo the last sort; add `--mode` (and `--target` for custom) to undo only that folder's last sort |
 | `--move-folders` | Downloads mode: also move existing folders into `My Folders` |
 | `--archive-after-days N` | Archive age for Downloads and Custom mode (default 180) |
-| `--skip-ocr` / `--fast` | Never run OCR, even if Tesseract is available |
-| `--tesseract-cmd PATH` | Use this `tesseract.exe` instead of auto-detecting it |
 | `--max-files N` | Soft cap before SortJunk asks you to confirm a large scan |
 | `-v` / `--verbose` | Debug-level logging |
 
@@ -216,7 +206,7 @@ src/sortjunk/
     cli.py              command line
     pipeline.py         shared read-only scan -> categorize -> plan
     scanner.py          read-only folder walk
-    categorizer/        downloads.py (by type), screenshots.py (OCR + duplicates), custom.py
+    categorizer/        downloads.py (by type), screenshots.py (month + duplicates), custom.py
     planner.py          builds the dry-run Plan; never touches disk
     executor.py         the only module allowed to move/archive/remove files (and undo)
     target_guard.py     refuses drive roots, system folders, user profile, projects
@@ -225,7 +215,7 @@ src/sortjunk/
     settings.py         remembered options
     scheduler.py        opt-in auto-clean task (Windows Task Scheduler, per user)
     autoclean.py        headless run launched by that task (SortJunk.exe --auto-clean)
-    archiver.py, hashing.py, ocr.py, special_folders.py, models.py, config.py
+    archiver.py, hashing.py, special_folders.py, models.py, config.py
 packaging/              PyInstaller spec, icon, version info, exe entry point
 tests/
 ```

@@ -31,7 +31,7 @@ class FileRecord:
     modified_at: datetime
     created_at: datetime
     # OneDrive "online-only": reading its contents would download it, so it's
-    # sorted by name/date only -- never hashed, OCR'd, or zipped.
+    # sorted by name/date only -- never hashed or zipped.
     cloud_only: bool = False
 
 
@@ -43,7 +43,6 @@ class CategoryDecision:
     category: str
     is_duplicate: bool = False
     dup_group_id: str | None = None
-    ocr_used: bool = False
     skip_reason: str | None = None
 
 
@@ -57,7 +56,6 @@ class PlannedAction:
     category: str
     size_bytes: int
     reason: str
-    ocr_used: bool = False
     dup_group_id: str | None = None
 
 

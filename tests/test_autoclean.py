@@ -34,7 +34,6 @@ def test_settings_survive_a_corrupt_or_hand_edited_file(app_dir):
     loaded = settings.load()
     assert loaded.archive_after_days == 180
     assert loaded.last_mode == "downloads"
-    assert loaded.skip_ocr is True
 
     (app_dir / "settings.json").write_text("{not json")
     assert settings.load() == settings.Settings()

@@ -13,7 +13,7 @@ import logging
 import sys
 from logging.handlers import RotatingFileHandler
 
-from . import executor, history, ocr, pipeline, scanner, special_folders, target_guard
+from . import executor, history, pipeline, scanner, special_folders, target_guard
 from .config import ScanConfig
 from .models import ActionType
 from .settings import Settings, app_data_dir, load
@@ -69,11 +69,6 @@ def _clean_one(mode: str, settings: Settings) -> None:
         move_existing_folders=settings.move_existing_folders,
         **pipeline.mode_defaults(mode),
     )
-    if mode == "screenshots":
-        config.use_ocr = ocr.detect_tesseract().available and not settings.skip_ocr
-    else:
-        config.use_ocr = False
-
     estimated = scanner.estimate_file_count(
         config.target_root,
         recursive=mode != "downloads",

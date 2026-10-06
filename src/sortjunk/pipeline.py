@@ -25,13 +25,14 @@ _CATEGORIZERS = {
 def mode_defaults(mode: str) -> dict:
     """Per-mode settings that aren't user options.
 
-    Custom is a deliberate one-off cleanup: no freshness hold-back, and it's
-    the only mode that prunes folders left empty by sorting. The others hold
-    back anything created in the last 24h so an in-use file isn't yanked away.
+    Custom is a deliberate one-off cleanup: no freshness hold-back. The others
+    hold back anything created in the last 24h so an in-use file isn't yanked
+    away. Custom and Screenshots prune folders left empty by sorting (for
+    Screenshots: the category subfolders older versions made).
     """
     return {
         "min_age_hours": 0 if mode == "custom" else 24,
-        "remove_empty_folders": mode == "custom",
+        "remove_empty_folders": mode in ("custom", "screenshots"),
     }
 
 

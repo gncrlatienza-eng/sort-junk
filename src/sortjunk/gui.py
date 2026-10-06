@@ -22,7 +22,6 @@ from tkinter import filedialog, messagebox, ttk
 from . import (
     executor,
     history,
-    ocr,
     pipeline,
     scanner,
     scheduler,
@@ -46,9 +45,8 @@ _MODE_HELP = {
         "option below). Files older than the archive age go into 'Storage'. Nothing is deleted."
     ),
     "screenshots": (
-        "Sorts screenshots into <month>/Receipts, Errors_Code, Chats or Uncategorized "
-        "(using OCR text when Tesseract is installed). Duplicates go to 'Duplicates_Found' "
-        "for you to review. The oldest copy stays put. Nothing is deleted."
+        "Sorts screenshots into one folder per month, like 'Dec-2026'. Duplicates go to "
+        "'Duplicates_Found' for you to review. The oldest copy stays put. Nothing is deleted."
     ),
     "custom": (
         "Tidies any folder you pick: files from all subfolders are gathered into type "
@@ -182,7 +180,6 @@ class SortJunkApp:
 
         self._build_widgets()
         self.mode_var.set(self.settings.last_mode)
-        self.skip_ocr_var.set(self.settings.skip_ocr)
         self.archive_days_var.set(str(self.settings.archive_after_days))
         self.move_folders_var.set(self.settings.move_existing_folders)
         self._on_mode_change()
@@ -243,12 +240,6 @@ class SortJunkApp:
         self.folder_entry.grid(row=0, column=1, columnspan=2, sticky="we")
         self.browse_button = ttk.Button(top, text="Browse...", command=self._browse)
         self.browse_button.grid(row=0, column=3, padx=(6, 0))
-
-        self.skip_ocr_var = tk.BooleanVar(value=False)
-        self.ocr_check = ttk.Checkbutton(
-            top, text="Skip OCR (faster; screenshots only)", variable=self.skip_ocr_var
-        )
-        self.ocr_check.grid(row=1, column=1, sticky="w", pady=(8, 0))
 
         ttk.Label(top, text="Archive after (days):").grid(row=1, column=2, sticky="e", pady=(8, 0))
         self.archive_days_var = tk.StringVar(value="180")
@@ -333,7 +324,6 @@ class SortJunkApp:
         if hasattr(self, "undo_button"):
             self._refresh_undo_button()
         self.mode_help_var.set(_MODE_HELP[mode])
-        self.ocr_check.configure(state="normal" if mode == "screenshots" else "disabled")
         # Screenshots mode always sorts by month regardless of age -- this
         # setting has no effect there.
         self.archive_days_spinbox.configure(state="disabled" if mode == "screenshots" else "normal")
@@ -429,13 +419,13 @@ class SortJunkApp:
         self._start_busy("scan", "Scanning...")
         threading.Thread(
             target=self._scan_worker,
-            args=(config, self.skip_ocr_var.get(), self._cancel_event),
+            args=(config, self._cancel_event),
             daemon=True,
         ).start()
 
     def _cancel_scan(self) -> None:
         # Free the window now rather than waiting for the worker to notice:
-        # some stages (one OCR call, one big image) can't be interrupted.
+        # some stages (hashing one big file) can't be interrupted.
         # The worker stops at its next check and its results are discarded.
         self._cancel_event.set()
         self._large_scan_confirmed = False
@@ -547,7 +537,6 @@ class SortJunkApp:
         s.last_mode = self.mode_var.get()
         if s.last_mode == "custom":
             s.last_custom_folder = self.target_var.get().strip()
-        s.skip_ocr = self.skip_ocr_var.get()
         s.move_existing_folders = self.move_folders_var.get()
         try:
             days = int(self.archive_days_var.get().strip())
@@ -630,7 +619,7 @@ class SortJunkApp:
 
         return _progress
 
-    def _scan_worker(self, config: ScanConfig, skip_ocr: bool, cancel: threading.Event) -> None:
+    def _scan_worker(self, config: ScanConfig, cancel: threading.Event) -> None:
         try:
             estimated = scanner.estimate_file_count(
                 config.target_root,
@@ -645,19 +634,8 @@ class SortJunkApp:
                     self.work_queue.put(("scan_aborted", cancel))
                     return
 
-            ocr_note = ""
-            if config.mode == "screenshots":
-                status = ocr.detect_tesseract()
-                config.use_ocr = status.available and not skip_ocr
-                if not status.available:
-                    ocr_note = "Tesseract OCR not found, so screenshots are sorted by month only."
-                elif not config.use_ocr:
-                    ocr_note = "OCR skipped, so screenshots are sorted by month only."
-            else:
-                config.use_ocr = False
-
             plan = pipeline.build_plan(config)
-            self.work_queue.put(("scan_done", cancel, plan, ocr_note))
+            self.work_queue.put(("scan_done", cancel, plan))
         except ScanCancelled:
             self.work_queue.put(("scan_aborted", cancel))
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI thread
@@ -707,16 +685,16 @@ class SortJunkApp:
             self._large_scan_confirmed = messagebox.askyesno(
                 "SortJunk",
                 f"{estimated:,} files found, above the {max_files:,} soft limit.\n\n"
-                "Scanning this many files (duplicate checks, and OCR in Screenshots mode) "
+                "Scanning this many files (duplicate checks) "
                 "can take a long time. Continue anyway?",
             )
             self._large_scan_event.set()
         elif kind == "warning":
             messagebox.showwarning("SortJunk", message[1])
         elif kind == "scan_done":
-            _, plan, ocr_note = message
+            _, plan = message
             self._stop_busy()
-            self._show_plan(plan, ocr_note)
+            self._show_plan(plan)
         elif kind == "scan_aborted":
             self._stop_busy()
             self.status_var.set("Scan cancelled. Nothing was changed.")
@@ -741,7 +719,7 @@ class SortJunkApp:
 
     # -- result display ----------------------------------------------------------
 
-    def _show_plan(self, plan: Plan, ocr_note: str) -> None:
+    def _show_plan(self, plan: Plan) -> None:
         self.plan = plan
         root = plan.target_root
         rows = []
@@ -758,7 +736,7 @@ class SortJunkApp:
         self._set_rows(rows)
 
         changing = [a for a in plan.actions if a.action != ActionType.SKIP]
-        note = f" {ocr_note}" if ocr_note else ""
+        note = ""
         if plan.cloud_only_files:
             note += (
                 f" {plan.cloud_only_files:,} OneDrive online-only file(s) were sorted by name "
@@ -898,7 +876,7 @@ class AutoCleanDialog:
             frame,
             text=(
                 "Runs at 12:00 (or as soon as your PC is on after that) while you're signed "
-                "in, using your current settings: archive age, OCR, and the 'My Folders' "
+                "in, using your current settings: archive age and the 'My Folders' "
                 "option. Files newer than 24 hours are never touched, and every automatic "
                 "clean-up can be reversed with the Undo button in that folder's mode."
             ),

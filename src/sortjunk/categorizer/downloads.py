@@ -1,6 +1,6 @@
 """Downloads-mode categorization: extension-based, with in-progress-download skip.
 
-Deliberately has zero import dependency on Pillow/imagehash/pytesseract, so
+Deliberately has zero import dependency on Pillow/imagehash, so
 Downloads mode keeps working even if the image-processing stack fails to
 import.
 """

@@ -12,7 +12,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import executor, history, ocr, pipeline, scanner, special_folders, target_guard
+from . import executor, history, pipeline, scanner, special_folders, target_guard
 from .config import ScanConfig
 from .models import ActionResult, Plan
 
@@ -66,20 +66,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--apply", action="store_true", help="Actually move/archive files.")
     parser.add_argument("--yes", action="store_true", help="Skip the interactive confirmation.")
     parser.add_argument(
-        "--skip-ocr", action="store_true", help="Never run OCR, even if Tesseract is available."
-    )
-    parser.add_argument("--fast", action="store_true", help="Alias for --skip-ocr.")
-    parser.add_argument(
         "--move-folders",
         action="store_true",
         help="Downloads mode: also move folders you already have into 'My Folders'.",
     )
     parser.add_argument("--archive-after-days", type=_bounded_int(1, 3650), default=180)
-    parser.add_argument("--max-ocr-size-mb", type=int, default=20)
     parser.add_argument("--max-files", type=int, default=50_000)
-    parser.add_argument(
-        "--tesseract-cmd", default=None, help="Path to tesseract.exe if not on PATH."
-    )
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser
 
@@ -90,11 +82,8 @@ def _config_from_args(args: argparse.Namespace) -> ScanConfig:
         target_root=args.target.resolve(),
         apply=args.apply,
         assume_yes=args.yes,
-        use_ocr=True,  # refined below once Tesseract availability is known
         archive_after_days=args.archive_after_days,
-        max_ocr_size_mb=args.max_ocr_size_mb,
         max_files=args.max_files,
-        tesseract_cmd=args.tesseract_cmd,
         verbose=args.verbose,
         move_existing_folders=args.move_folders,
         **pipeline.mode_defaults(args.mode),
@@ -199,20 +188,6 @@ def main(argv: list[str] | None = None) -> int:
     if unsafe_reason is not None:
         print(f"Refusing to sort this folder: {unsafe_reason}", file=sys.stderr)
         return 1
-
-    if config.mode == "screenshots":
-        tesseract_status = ocr.detect_tesseract(config.tesseract_cmd)
-        config.use_ocr = tesseract_status.available and not args.skip_ocr and not args.fast
-        if not tesseract_status.available:
-            print(
-                "Tesseract OCR not found -- falling back to date-only categorization "
-                "for screenshots (use --tesseract-cmd to point at a binary, or install "
-                "Tesseract). See README for details."
-            )
-        elif not config.use_ocr:
-            print("OCR skipped by request (--skip-ocr/--fast); using date-only categorization.")
-    else:
-        config.use_ocr = False
 
     estimated = scanner.estimate_file_count(
         config.target_root,

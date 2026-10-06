@@ -30,7 +30,6 @@ class Settings:
     last_mode: str = "downloads"
     last_custom_folder: str = ""
     archive_after_days: int = 180
-    skip_ocr: bool = False
     move_existing_folders: bool = False
     auto_clean_enabled: bool = False
     auto_clean_frequency: str = "weekly"

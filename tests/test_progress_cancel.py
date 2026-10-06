@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,7 +36,6 @@ def test_progress_callback_receives_stage_counts(tmp_path, make_file):
     config = ScanConfig(
         mode="screenshots",
         target_root=tmp_path / "S",
-        use_ocr=False,
         on_progress=lambda stage, done, total: calls.append((stage, done, total)),
     )
 
@@ -54,17 +54,6 @@ def test_progress_callback_can_cancel_a_scan(tmp_path, make_file):
 
     with pytest.raises(ScanCancelled):
         scanner.scan(tmp_path / "S", on_progress=_cancel)
-
-
-def test_find_tesseract_checks_standard_install_folder(tmp_path, monkeypatch):
-    from sortjunk import ocr
-
-    exe = tmp_path / "PF" / "Tesseract-OCR" / "tesseract.exe"
-    exe.parent.mkdir(parents=True)
-    exe.write_bytes(b"")
-    monkeypatch.setattr(ocr.shutil, "which", lambda name: None)
-
-    assert ocr.find_tesseract(env={"ProgramFiles": str(tmp_path / "PF")}) == str(exe)
 
 
 def test_perceptual_hash_finds_near_duplicates_but_not_different_images(tmp_path):
@@ -94,14 +83,10 @@ def test_screenshots_scan_skips_already_sorted_month_folders(tmp_path, make_file
     from sortjunk import pipeline
 
     make_file("S/new.png", age_days=3)
-    make_file("S/Mar-2025/Chats/old.png", age_days=3)
-    make_file("S/2025-03/Chats/legacy.png", age_days=3)  # v0.1.x folder name
+    make_file("S/Mar-2025/old.png", age_days=3)
     make_file("S/Edits/kept.png", age_days=3)
     config = ScanConfig(
-        mode="screenshots",
-        target_root=tmp_path / "S",
-        use_ocr=False,
-        **pipeline.mode_defaults("screenshots"),
+        mode="screenshots", target_root=tmp_path / "S", **pipeline.mode_defaults("screenshots")
     )
 
     plan = pipeline.build_plan(config)
@@ -109,6 +94,26 @@ def test_screenshots_scan_skips_already_sorted_month_folders(tmp_path, make_file
     names = sorted(a.source.name for a in plan.actions)
     assert names == ["kept.png", "new.png"]
     assert scanner.estimate_file_count(tmp_path / "S", skip_month_folders=True) == 2
+
+
+def test_screenshots_flatten_category_folders_from_older_versions(tmp_path, make_file):
+    from sortjunk import pipeline
+    from sortjunk.models import ActionType
+
+    make_file("S/Mar-2025/Chats/chat.png", content=b"chat", age_days=3)
+    make_file("S/2025-03/Receipts/receipt.png", content=b"receipt", age_days=3)
+    target = tmp_path / "S"
+    config = ScanConfig(mode="screenshots", target_root=target, remove_empty_folders=True)
+
+    plan = pipeline.build_plan(config)
+
+    moves = {a.source.name: a.destination for a in plan.actions if a.action == ActionType.MOVE}
+    for name, dest in moves.items():
+        assert dest.parent.parent == target.resolve()
+        assert re.fullmatch(r"[A-Z][a-z]{2}-\d{4}", dest.parent.name), name
+    assert set(moves) == {"chat.png", "receipt.png"}
+    removed = {a.source.name for a in plan.actions if a.action == ActionType.REMOVE_EMPTY_DIR}
+    assert {"Chats", "Receipts"} <= removed
 
 
 def test_screenshot_month_folder_name_is_month_and_year():
@@ -182,3 +187,22 @@ def test_cancel_during_near_duplicate_pass():
 
     with pytest.raises(ScanCancelled):
         screenshots_categorizer._find_near_duplicates(entries, report=_cancel)
+
+
+def test_folders_receiving_files_are_never_planned_for_removal(tmp_path, make_file):
+    from sortjunk import pipeline
+    from sortjunk.models import ActionType
+    from sortjunk.planner import month_folder_name
+
+    shot = make_file("S/Mar-2025/Chats/chat.png", content=b"chat", age_days=3)
+    month = month_folder_name(datetime.fromtimestamp(shot.stat().st_mtime, tz=UTC))
+    shot.parent.parent.rename(tmp_path / "S" / month)  # its own month's folder
+    target = tmp_path / "S"
+    config = ScanConfig(mode="screenshots", target_root=target, remove_empty_folders=True)
+
+    plan = pipeline.build_plan(config)
+
+    removed = {a.source.name for a in plan.actions if a.action == ActionType.REMOVE_EMPTY_DIR}
+    move = next(a for a in plan.actions if a.action == ActionType.MOVE)
+    assert removed == {"Chats"}
+    assert move.destination.parent.name not in removed

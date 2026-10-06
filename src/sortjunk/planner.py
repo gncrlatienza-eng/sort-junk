@@ -52,7 +52,8 @@ def _empty_dir_candidates(actions: list[PlannedAction], root: Path) -> list[Path
 
     A directory qualifies unless at least one action inside it is a SKIP
     (in-progress download, already-sorted, already-flagged duplicate, or
-    too-fresh) -- any of those means something real is still there. Every
+    too-fresh) -- any of those means something real is still there -- or
+    some file is being moved into it (or below it). Every
     ancestor directory of every action's source is considered, so a
     directory left empty only because a now-also-empty subdirectory was
     removed still qualifies. Sorted deepest-first so the executor's
@@ -70,6 +71,13 @@ def _empty_dir_candidates(actions: list[PlannedAction], root: Path) -> list[Path
             all_dirs.add(directory)
             if action.action == ActionType.SKIP:
                 blocked_dirs.add(directory)
+        if action.destination is not None:
+            try:
+                dest_parts = action.destination.relative_to(root).parts[:-1]
+            except ValueError:
+                continue
+            for i in range(1, len(dest_parts) + 1):
+                blocked_dirs.add(Path(*dest_parts[:i]))
 
     candidates = all_dirs - blocked_dirs
     return sorted(candidates, key=lambda p: len(p.parts), reverse=True)
@@ -105,12 +113,6 @@ def month_folder_name(when: datetime) -> str:
     return f"{MONTH_ABBREVIATIONS[when.month - 1]}-{when.year}"
 
 
-def _category_subpath(decision: CategoryDecision, config: ScanConfig) -> str:
-    if config.mode == "screenshots":
-        return f"{month_folder_name(decision.record.modified_at)}/{decision.category}"
-    return decision.category
-
-
 def build_plan(
     records: list[FileRecord],
     decisions: list[CategoryDecision],
@@ -125,7 +127,7 @@ def build_plan(
     only then does age-based archiving apply (Downloads: moved into Storage;
     Custom: zipped) -- anything left gets a normal categorized move. In
     Screenshots mode, age never triggers archiving at all: every screenshot,
-    however old, sorts into `<month>/<category>` like a fresh one -- age-based
+    however old, sorts into its `<month>` folder like a fresh one -- age-based
     archiving is skipped, not merely redirected. If `remove_empty_folders` is
     set, a final pass adds cleanup actions for any directory left with
     nothing in it.
@@ -209,7 +211,6 @@ def build_plan(
                         if decision.dup_group_id in keeper_names
                         else "duplicate"
                     ),
-                    ocr_used=decision.ocr_used,
                     dup_group_id=decision.dup_group_id,
                 )
             )
@@ -246,7 +247,6 @@ def build_plan(
                             f"untouched for {config.archive_after_days}+ days -- "
                             "moved to Storage"
                         ),
-                        ocr_used=decision.ocr_used,
                     )
                 )
                 continue
@@ -258,14 +258,13 @@ def build_plan(
                     category=decision.category,
                     size_bytes=record.size_bytes,
                     reason=f"untouched for {config.archive_after_days}+ days",
-                    ocr_used=decision.ocr_used,
                 )
             )
             continue
 
         destination = safe_destination_for(
             config.target_root,
-            _category_subpath(decision, config),
+            decision.category,
             record.path.name,
             source=record.path,
         )
@@ -289,7 +288,6 @@ def build_plan(
                 category=decision.category,
                 size_bytes=record.size_bytes,
                 reason="categorized",
-                ocr_used=decision.ocr_used,
             )
         )
 

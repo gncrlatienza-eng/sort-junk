@@ -23,19 +23,18 @@ logger = logging.getLogger(__name__)
 
 # Top-level folders SortJunk itself creates. Never re-ingested as clutter to
 # sort -- without this, a rerun would try to re-categorize its own archive
-# zips, and would re-hash/re-OCR everything already flagged into
+# zips, and would re-hash everything already flagged into
 # Duplicates_Found on every subsequent run.
 _EXCLUDED_TOP_LEVEL_NAMES = {DUPLICATES_SUBDIR}
 _EXCLUDED_TOP_LEVEL_PREFIXES = ("_Archive_",)
-# Screenshots mode's own `Mon-YYYY/<Category>` output (`YYYY-MM` before
-# v0.1.3). Skipped on reruns so already-sorted screenshots aren't re-hashed
-# and re-OCR'd every scan.
+# Screenshots mode's own month folders (`Mon-YYYY`; `YYYY-MM` before v0.1.3).
+# Files sitting directly in one are already sorted and skipped, so reruns
+# don't re-hash them. Subfolders inside (the per-category folders older
+# versions made) are still scanned so those screenshots get flattened.
 _MONTH_FOLDER = re.compile(rf"\d{{4}}-\d{{2}}|(?:{'|'.join(MONTH_ABBREVIATIONS)})-\d{{4}}")
 
 
-def _is_excluded_top_level(name: str, skip_month_folders: bool = False) -> bool:
-    if skip_month_folders and _MONTH_FOLDER.fullmatch(name):
-        return True
+def _is_excluded_top_level(name: str) -> bool:
     return name in _EXCLUDED_TOP_LEVEL_NAMES or any(
         name.startswith(prefix) for prefix in _EXCLUDED_TOP_LEVEL_PREFIXES
     )
@@ -44,7 +43,7 @@ def _is_excluded_top_level(name: str, skip_month_folders: bool = False) -> bool:
 def estimate_file_count(
     root: Path, recursive: bool = True, skip_month_folders: bool = False
 ) -> int:
-    """Cheap pre-scan count of files under `root`, for a soft-limit prompt before hashing/OCR.
+    """Cheap pre-scan count of files under `root`, for a soft-limit prompt before hashing.
 
     `recursive=False` counts only files sitting directly in `root`, matching
     what `scan(recursive=False)` will actually process -- used by Downloads
@@ -56,9 +55,10 @@ def estimate_file_count(
         except OSError:
             return 0
     count = 0
-    for current, dirs, files in os.walk(root):
-        if skip_month_folders and Path(current) == Path(root):
-            dirs[:] = [d for d in dirs if not _MONTH_FOLDER.fullmatch(d)]
+    for current, _dirs, files in os.walk(root):
+        path = Path(current)
+        if skip_month_folders and path.parent == Path(root) and _MONTH_FOLDER.fullmatch(path.name):
+            continue
         count += len(files)
     return count
 
@@ -118,13 +118,13 @@ def scan(
     `list_top_level_dirs` for how pre-existing user folders are handled
     instead.
 
-    `skip_month_folders=True` (Screenshots mode) also skips top-level
-    month folders (`Mon-YYYY`, or `YYYY-MM` from older versions) -- that
-    mode's own already-sorted output.
+    `skip_month_folders=True` (Screenshots mode) skips files sitting directly
+    in a top-level month folder -- that mode's own already-sorted output.
     """
     root = root.resolve(strict=True)
     records: list[FileRecord] = []
     stack = [root]
+    sorted_dirs: set[Path] = set()
 
     while stack:
         current = stack.pop()
@@ -143,10 +143,10 @@ def scan(
 
             try:
                 if entry.is_dir(follow_symlinks=False):
-                    if is_root_level and (
-                        not recursive or _is_excluded_top_level(entry.name, skip_month_folders)
-                    ):
+                    if is_root_level and (not recursive or _is_excluded_top_level(entry.name)):
                         continue
+                    if is_root_level and skip_month_folders and _MONTH_FOLDER.fullmatch(entry.name):
+                        sorted_dirs.add(entry_path)
                     if is_project_dir(entry_path):
                         # A repo / venv / node_modules: its layout matters, so it's
                         # left whole -- none of its files are ever recorded or moved.
@@ -154,7 +154,7 @@ def scan(
                         continue
                     stack.append(entry_path)
                     continue
-                if not entry.is_file(follow_symlinks=False):
+                if not entry.is_file(follow_symlinks=False) or current in sorted_dirs:
                     continue
             except OSError as exc:
                 logger.warning("Skipping unreadable entry %s: %s", entry_path, exc)

@@ -16,11 +16,8 @@ class ScanConfig:
     target_root: Path
     apply: bool = False
     assume_yes: bool = False
-    use_ocr: bool = True
     archive_after_days: int = 180
-    max_ocr_size_mb: int = 20
     max_files: int = 50_000
-    tesseract_cmd: str | None = None
     verbose: bool = False
     # 0 disables the check. Files created more recently than this are left
     # untouched so sorting never disrupts something just downloaded/captured.

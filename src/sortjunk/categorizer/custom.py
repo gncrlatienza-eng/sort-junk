@@ -2,8 +2,8 @@
 
 Reuses Downloads mode's extension-based sort (it was never actually
 Downloads-specific) and layers on exact-duplicate detection across every
-file type, not just images. Deliberately never imports Pillow/imagehash/
-pytesseract -- no OCR or perceptual hashing here, same dependency-light
+file type, not just images. Deliberately never imports Pillow/imagehash --
+no perceptual hashing here, same dependency-light
 philosophy as Downloads mode. Empty-folder cleanup is handled by
 planner.py/executor.py, not here.
 """

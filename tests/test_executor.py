@@ -86,12 +86,10 @@ def test_downloads_old_files_move_to_storage_no_zip(tmp_path, make_file):
 
 def test_screenshots_old_files_sort_per_month_not_zip(tmp_path, make_file):
     """Screenshots mode never archives by age -- an old screenshot sorts into
-    <month>/<category> exactly like a fresh one, no zip involved."""
+    <month> exactly like a fresh one, no zip involved."""
     make_file("Screenshots/old.png", content=b"not a real image", age_days=200)
     target = tmp_path / "Screenshots"
-    config = ScanConfig(
-        mode="screenshots", target_root=target, archive_after_days=180, use_ocr=False
-    )
+    config = ScanConfig(mode="screenshots", target_root=target, archive_after_days=180)
     plan = _screenshots_plan_for(target, config)
 
     assert plan.actions[0].action == ActionType.MOVE
@@ -100,9 +98,9 @@ def test_screenshots_old_files_sort_per_month_not_zip(tmp_path, make_file):
     assert results[0].succeeded
     assert not (target / "old.png").exists()
 
-    month = results[0].destination.parent.parent.name
+    month = results[0].destination.parent.name
     assert re.fullmatch(r"[A-Z][a-z]{2}-\d{4}", month)
-    assert (target / month / "Uncategorized" / "old.png").exists()
+    assert (target / month / "old.png").exists()
     assert not any(target.rglob("*.zip"))
 
 
@@ -331,10 +329,10 @@ def test_remove_empty_dir_leaves_a_non_empty_folder_in_place(tmp_path):
     assert (occupied_dir / "surprise.txt").exists()
 
 
-def test_ocr_unavailable_path_end_to_end(tmp_path, make_file):
+def test_unreadable_image_still_sorts_by_month(tmp_path, make_file):
     make_file("Screenshots/shot.png", content=b"not a real image")
     target = tmp_path / "Screenshots"
-    config = ScanConfig(mode="screenshots", target_root=target, use_ocr=False)
+    config = ScanConfig(mode="screenshots", target_root=target)
 
     records = scanner.scan(target)
     decisions = screenshots_categorizer.categorize(records, config)
@@ -344,8 +342,7 @@ def test_ocr_unavailable_path_end_to_end(tmp_path, make_file):
     assert all(r.succeeded for r in results)
 
     action = plan.actions[0]
-    assert action.ocr_used is False
-    assert action.category == "Uncategorized"
+    assert action.category == planner.month_folder_name(records[0].modified_at)
 
 
 def test_junk_file_at_the_archive_path_is_never_lost_or_trusted(tmp_path, make_file):
