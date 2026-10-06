@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,15 +27,22 @@ logger = logging.getLogger(__name__)
 # Duplicates_Found on every subsequent run.
 _EXCLUDED_TOP_LEVEL_NAMES = {DUPLICATES_SUBDIR}
 _EXCLUDED_TOP_LEVEL_PREFIXES = ("_Archive_",)
+# Screenshots mode's own `YYYY-MM/<Category>` output. Skipped on reruns so
+# already-sorted screenshots aren't re-hashed and re-OCR'd every scan.
+_MONTH_FOLDER = re.compile(r"\d{4}-\d{2}")
 
 
-def _is_excluded_top_level(name: str) -> bool:
+def _is_excluded_top_level(name: str, skip_month_folders: bool = False) -> bool:
+    if skip_month_folders and _MONTH_FOLDER.fullmatch(name):
+        return True
     return name in _EXCLUDED_TOP_LEVEL_NAMES or any(
         name.startswith(prefix) for prefix in _EXCLUDED_TOP_LEVEL_PREFIXES
     )
 
 
-def estimate_file_count(root: Path, recursive: bool = True) -> int:
+def estimate_file_count(
+    root: Path, recursive: bool = True, skip_month_folders: bool = False
+) -> int:
     """Cheap pre-scan count of files under `root`, for a soft-limit prompt before hashing/OCR.
 
     `recursive=False` counts only files sitting directly in `root`, matching
@@ -47,7 +55,9 @@ def estimate_file_count(root: Path, recursive: bool = True) -> int:
         except OSError:
             return 0
     count = 0
-    for _current, _dirs, files in os.walk(root):
+    for current, dirs, files in os.walk(root):
+        if skip_month_folders and Path(current) == Path(root):
+            dirs[:] = [d for d in dirs if not _MONTH_FOLDER.fullmatch(d)]
         count += len(files)
     return count
 
@@ -93,6 +103,7 @@ def scan(
     max_files: int | None = None,
     recursive: bool = True,
     on_progress: ProgressCallback | None = None,
+    skip_month_folders: bool = False,
 ) -> list[FileRecord]:
     """Walk `root` recursively and return a FileRecord for every regular file.
 
@@ -105,6 +116,9 @@ def scan(
     or a folder the user made. Used by Downloads mode; see
     `list_top_level_dirs` for how pre-existing user folders are handled
     instead.
+
+    `skip_month_folders=True` (Screenshots mode) also skips top-level
+    `YYYY-MM` folders -- that mode's own already-sorted output.
     """
     root = root.resolve(strict=True)
     records: list[FileRecord] = []
@@ -127,7 +141,9 @@ def scan(
 
             try:
                 if entry.is_dir(follow_symlinks=False):
-                    if is_root_level and (not recursive or _is_excluded_top_level(entry.name)):
+                    if is_root_level and (
+                        not recursive or _is_excluded_top_level(entry.name, skip_month_folders)
+                    ):
                         continue
                     if is_project_dir(entry_path):
                         # A repo / venv / node_modules: its layout matters, so it's

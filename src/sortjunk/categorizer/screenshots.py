@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .. import hashing, ocr
-from ..config import ScanConfig
+from ..config import ProgressCallback, ScanConfig
 from ..models import CategoryDecision, FileRecord
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,15 @@ def _classify_text(text: str) -> str:
     return UNCATEGORIZED
 
 
-def _find_near_duplicates(entries: list[tuple[FileRecord, int]]) -> dict[Path, str]:
+# The 64-bit hash split into 6 bands. Two hashes within NEAR_DUP_THRESHOLD (5)
+# bits must agree exactly on at least one band (pigeonhole), so only pairs
+# sharing a band bucket need comparing -- not all n^2 of them.
+_BANDS = ((0, 11), (11, 11), (22, 11), (33, 11), (44, 10), (54, 10))
+
+
+def _find_near_duplicates(
+    entries: list[tuple[FileRecord, int]], report: ProgressCallback | None = None
+) -> dict[Path, str]:
     """Cluster `entries` (record, phash) pairs by Hamming distance via union-find."""
     n = len(entries)
     parent = list(range(n))
@@ -74,10 +82,22 @@ def _find_near_duplicates(entries: list[tuple[FileRecord, int]]) -> dict[Path, s
         if ri != rj:
             parent[ri] = rj
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            if hashing.hamming_distance(entries[i][1], entries[j][1]) <= hashing.NEAR_DUP_THRESHOLD:
-                union(i, j)
+    buckets: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for i, (_record, phash) in enumerate(entries):
+        for band, (shift, width) in enumerate(_BANDS):
+            buckets[(band, (phash >> shift) & ((1 << width) - 1))].append(i)
+
+    for i, (_record, phash) in enumerate(entries):
+        if report is not None:
+            report("Finding similar images", i, n)
+        checked: set[int] = set()
+        for band, (shift, width) in enumerate(_BANDS):
+            for j in buckets[(band, (phash >> shift) & ((1 << width) - 1))]:
+                if j <= i or j in checked:
+                    continue
+                checked.add(j)
+                if hashing.hamming_distance(phash, entries[j][1]) <= hashing.NEAR_DUP_THRESHOLD:
+                    union(i, j)
 
     clusters: dict[int, list[int]] = defaultdict(list)
     for i in range(n):
@@ -110,7 +130,7 @@ def categorize(records: list[FileRecord], config: ScanConfig) -> list[CategoryDe
         phash = hashing.perceptual_hash(record.path)
         if phash is not None:
             phash_entries.append((record, phash))
-    near_dups = _find_near_duplicates(phash_entries)
+    near_dups = _find_near_duplicates(phash_entries, report=config.on_progress)
     near_keepers = hashing.pick_keepers(records, near_dups)
 
     decisions: list[CategoryDecision] = []

@@ -624,7 +624,9 @@ class SortJunkApp:
     def _scan_worker(self, config: ScanConfig, skip_ocr: bool) -> None:
         try:
             estimated = scanner.estimate_file_count(
-                config.target_root, recursive=config.mode != "downloads"
+                config.target_root,
+                recursive=config.mode != "downloads",
+                skip_month_folders=config.mode == "screenshots",
             )
             if estimated > config.max_files:
                 self._large_scan_event.clear()

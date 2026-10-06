@@ -74,7 +74,11 @@ def _clean_one(mode: str, settings: Settings) -> None:
     else:
         config.use_ocr = False
 
-    estimated = scanner.estimate_file_count(config.target_root, recursive=mode != "downloads")
+    estimated = scanner.estimate_file_count(
+        config.target_root,
+        recursive=mode != "downloads",
+        skip_month_folders=mode == "screenshots",
+    )
     if estimated > config.max_files:
         logger.warning(
             "Skipping %s: %d files is over the %d limit -- run SortJunk by hand for this one.",

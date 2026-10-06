@@ -54,7 +54,10 @@ def build_plan(config: ScanConfig) -> Plan:
             )
     else:
         records = scanner.scan(
-            config.target_root, max_files=config.max_files, on_progress=config.on_progress
+            config.target_root,
+            max_files=config.max_files,
+            on_progress=config.on_progress,
+            skip_month_folders=config.mode == "screenshots",
         )
 
     decisions = _CATEGORIZERS[config.mode].categorize(records, config)

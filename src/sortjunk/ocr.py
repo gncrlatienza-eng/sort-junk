@@ -15,6 +15,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 DEFAULT_OCR_TIMEOUT_S = 10
+_TESSERACT_NATIVE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
 @dataclass
@@ -81,6 +82,10 @@ def ocr_image(path: Path, timeout_s: int = DEFAULT_OCR_TIMEOUT_S) -> str | None:
         return None
 
     try:
+        if path.suffix.lower() in _TESSERACT_NATIVE_SUFFIXES:
+            # Tesseract reads these itself; handing it a PIL image would make
+            # pytesseract re-encode every screenshot to a temp file first.
+            return pytesseract.image_to_string(str(path), timeout=timeout_s)
         with Image.open(path) as img:
             return pytesseract.image_to_string(img, timeout=timeout_s)
     except Exception as exc:  # noqa: BLE001 - OCR failures are expected and non-fatal

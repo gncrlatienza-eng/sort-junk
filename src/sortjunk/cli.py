@@ -215,7 +215,9 @@ def main(argv: list[str] | None = None) -> int:
         config.use_ocr = False
 
     estimated = scanner.estimate_file_count(
-        config.target_root, recursive=config.mode != "downloads"
+        config.target_root,
+        recursive=config.mode != "downloads",
+        skip_month_folders=config.mode == "screenshots",
     )
     if estimated > config.max_files and not config.assume_yes:
         answer = (
