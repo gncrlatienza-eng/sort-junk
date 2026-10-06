@@ -61,6 +61,8 @@ _MODE_HELP = {
 _MODE_NAMES = {"downloads": "Downloads", "screenshots": "Screenshots", "custom": "Custom folder"}
 
 _ARCHIVE_DAYS_RANGE = (1, 3650)
+# Scan-worker messages carry their scan's cancel event so stale ones can be dropped.
+_SCAN_MESSAGES = {"progress", "confirm_large_scan", "scan_done", "scan_aborted", "scan_error"}
 _ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
 
 _TREE_COLUMNS = (
@@ -271,9 +273,7 @@ class SortJunkApp:
 
         button_row = ttk.Frame(self.root, padding=(10, 0))
         button_row.pack(fill="x")
-        self.scan_button = ttk.Button(
-            button_row, text="Scan (preview only)", command=self._start_scan
-        )
+        self.scan_button = ttk.Button(button_row, text="Scan", command=self._start_scan)
         self.scan_button.pack(side="left")
         self.cancel_button = ttk.Button(button_row, text="Cancel", command=self._cancel_scan)
         self.apply_button = ttk.Button(
@@ -411,7 +411,10 @@ class SortJunkApp:
         self.plan = None
         self._set_rows([])
         self.summary_var.set("")
-        self._cancel_event.clear()
+        # A fresh event per scan: a cancelled worker that's still finishing in
+        # the background keeps its own (set) event, so its late messages are
+        # recognised as stale and dropped.
+        self._cancel_event = threading.Event()
 
         mode = self.mode_var.get()
         config = ScanConfig(
@@ -419,18 +422,26 @@ class SortJunkApp:
             target_root=target_path.resolve(),
             archive_after_days=archive_days,
             move_existing_folders=self.move_folders_var.get(),
-            on_progress=self._make_progress_callback(),
+            on_progress=self._make_progress_callback(self._cancel_event),
             **pipeline.mode_defaults(mode),
         )
         self._save_settings()
         self._start_busy("scan", "Scanning...")
         threading.Thread(
-            target=self._scan_worker, args=(config, self.skip_ocr_var.get()), daemon=True
+            target=self._scan_worker,
+            args=(config, self.skip_ocr_var.get(), self._cancel_event),
+            daemon=True,
         ).start()
 
     def _cancel_scan(self) -> None:
+        # Free the window now rather than waiting for the worker to notice:
+        # some stages (one OCR call, one big image) can't be interrupted.
+        # The worker stops at its next check and its results are discarded.
         self._cancel_event.set()
-        self._busy_message = "Cancelling..."
+        self._large_scan_confirmed = False
+        self._large_scan_event.set()
+        self._stop_busy()
+        self.status_var.set("Scan cancelled. Nothing was changed.")
 
     def _confirm_and_apply(self) -> None:
         if self.plan is None or not self.plan.actions:
@@ -594,8 +605,6 @@ class SortJunkApp:
         self._refresh_undo_button()
 
     def _on_progress(self, stage: str, done: int, total: int) -> None:
-        if self._cancel_event.is_set():
-            return
         if total:
             self.progress.stop()
             self.progress.configure(mode="determinate", maximum=total, value=done)
@@ -608,20 +617,20 @@ class SortJunkApp:
 
     # -- background workers (must never touch Tkinter widgets directly) --------
 
-    def _make_progress_callback(self):
+    def _make_progress_callback(self, cancel: threading.Event):
         last_sent = [0.0]
 
         def _progress(stage: str, done: int, total: int) -> None:
-            if self._cancel_event.is_set():
+            if cancel.is_set():
                 raise ScanCancelled
             now = time.monotonic()
             if now - last_sent[0] >= 0.15:
                 last_sent[0] = now
-                self.work_queue.put(("progress", stage, done, total))
+                self.work_queue.put(("progress", cancel, stage, done, total))
 
         return _progress
 
-    def _scan_worker(self, config: ScanConfig, skip_ocr: bool) -> None:
+    def _scan_worker(self, config: ScanConfig, skip_ocr: bool, cancel: threading.Event) -> None:
         try:
             estimated = scanner.estimate_file_count(
                 config.target_root,
@@ -630,10 +639,10 @@ class SortJunkApp:
             )
             if estimated > config.max_files:
                 self._large_scan_event.clear()
-                self.work_queue.put(("confirm_large_scan", estimated, config.max_files))
+                self.work_queue.put(("confirm_large_scan", cancel, estimated, config.max_files))
                 self._large_scan_event.wait()
-                if not self._large_scan_confirmed:
-                    self.work_queue.put(("scan_aborted",))
+                if cancel.is_set() or not self._large_scan_confirmed:
+                    self.work_queue.put(("scan_aborted", cancel))
                     return
 
             ocr_note = ""
@@ -648,11 +657,11 @@ class SortJunkApp:
                 config.use_ocr = False
 
             plan = pipeline.build_plan(config)
-            self.work_queue.put(("scan_done", plan, ocr_note))
+            self.work_queue.put(("scan_done", cancel, plan, ocr_note))
         except ScanCancelled:
-            self.work_queue.put(("scan_aborted",))
+            self.work_queue.put(("scan_aborted", cancel))
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI thread
-            self.work_queue.put(("error", str(exc)))
+            self.work_queue.put(("scan_error", cancel, str(exc)))
 
     def _apply_worker(self, plan: Plan) -> None:
         try:
@@ -686,6 +695,11 @@ class SortJunkApp:
 
     def _handle_message(self, message: tuple) -> None:
         kind = message[0]
+        if kind in _SCAN_MESSAGES:
+            cancel = message[1]
+            if cancel is not self._cancel_event or cancel.is_set():
+                return  # from a scan that was cancelled or superseded
+            message = (kind, *message[2:])
         if kind == "progress":
             self._on_progress(*message[1:])
         elif kind == "confirm_large_scan":
@@ -718,7 +732,7 @@ class SortJunkApp:
             self.plan = None
             self.apply_button.configure(state="disabled")
             self._show_results(run.target_root, results, "Undo finished", False)
-        elif kind == "error":
+        elif kind in ("error", "scan_error"):
             _, error_text = message
             self._stop_busy()
             self.status_var.set("Something went wrong -- see the message box.")

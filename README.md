@@ -46,7 +46,7 @@ Optionally, it can keep things tidy for you with a weekly or daily
    protected your PC", click **More info → Run anyway**. That appears because
    the app is new and unsigned (see [SmartScreen](#a-note-on-smartscreen)).
 4. **Try it safely first.** Choose **Custom folder**, click **Browse...**,
-   and pick a *copy* of a messy folder. Click **Scan (preview only)**, look
+   and pick a *copy* of a messy folder. Click **Scan**, look
    through the list, then **Confirm and Apply Changes**. Try **Undo** to see
    everything go back.
 5. **Use it for real.** Choose **Downloads** or **Screenshots**. SortJunk

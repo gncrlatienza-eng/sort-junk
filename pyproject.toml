@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sortjunk"
-version = "0.1.3"
+version = "0.1.4"
 description = "Local, safety-first cleanup tool for cluttered Screenshots and Downloads folders."
 readme = "README.md"
 requires-python = ">=3.13"
