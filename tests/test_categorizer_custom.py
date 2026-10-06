@@ -22,8 +22,8 @@ def test_extension_sort_matches_downloads_mode(tmp_path, make_file):
 
 
 def test_duplicate_detection_works_for_any_file_type(tmp_path, make_file):
-    make_file("Custom/report.pdf", content=b"identical bytes")
-    make_file("Custom/copy_of_report.pdf", content=b"identical bytes")
+    make_file("Custom/report.pdf", content=b"identical bytes", age_days=30)
+    make_file("Custom/copy_of_report.pdf", content=b"identical bytes", age_days=2)
     make_file("Custom/unrelated.txt", content=b"something else entirely")
     target = tmp_path / "Custom"
     config = ScanConfig(mode="custom", target_root=target)
@@ -32,7 +32,8 @@ def test_duplicate_detection_works_for_any_file_type(tmp_path, make_file):
     decisions = custom_categorizer.categorize(records, config)
     by_name = {d.record.path.name: d for d in decisions}
 
-    assert by_name["report.pdf"].is_duplicate
+    # The oldest copy is kept in place; only the later copy is flagged.
+    assert not by_name["report.pdf"].is_duplicate
     assert by_name["copy_of_report.pdf"].is_duplicate
     assert by_name["report.pdf"].dup_group_id == by_name["copy_of_report.pdf"].dup_group_id
     assert not by_name["unrelated.txt"].is_duplicate

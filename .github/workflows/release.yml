@@ -27,7 +27,7 @@ jobs:
 
       - run: python -m pip install -e ".[dev,build]"
       - run: python -m pytest
-      - run: python -m PyInstaller SortJunk.spec --noconfirm
+      - run: python -m PyInstaller packaging/SortJunk.spec --noconfirm
 
       - name: Package zip and checksums
         shell: pwsh

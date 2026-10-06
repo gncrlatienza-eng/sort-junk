@@ -1,175 +1,241 @@
 # SortJunk
 
-A local, safety-first cleanup tool for cluttered Windows Screenshots and Downloads folders.
+**A safe, one-click tidy-up for messy Windows folders.**
 
-> **Status: preview.** The scan/sort engine, a Tkinter GUI, and a packaged
-> standalone `.exe` all work today.
+> **Status: preview (v0.1).** Works today; feedback welcome via Issues.
+
+## What is SortJunk?
+
+If your Downloads folder is hundreds of installers, PDFs, and zips, and your
+Screenshots folder is thousands of `Screenshot (1234).png` files, SortJunk
+sorts them for you:
+
+- **Downloads** → neat folders by type: `PDF`, `Docs`, `Images`,
+  `Installers`, `Zip`, `Media`, `Others`, with anything untouched for months
+  moved into `Storage`.
+- **Screenshots** → one folder per month, split into `Receipts`,
+  `Errors_Code`, `Chats`, and `Uncategorized` by reading the text in each
+  image, with duplicates set aside for you to review.
+- **Any other folder** you choose → the same tidy type folders.
+
+It's built to be trusted with your files:
+
+- **You see everything first.** Every sort starts as a preview listing
+  each file, where it will go, and why. Nothing moves until you confirm.
+- **One-click undo.** Changed your mind? Undo puts every file back.
+- **Nothing is deleted or overwritten.** Duplicates are set aside, not
+  removed, and name clashes get a `(1)` suffix.
+- **It won't touch what it shouldn't.** System folders, your whole user
+  profile, and code projects are refused, and files from the last 24 hours
+  are left alone.
+- **Fully offline.** No account, no internet, no tracking.
+
+Optionally, it can keep things tidy for you with a weekly or daily
+**Auto-Clean** that you switch on yourself.
+
+## Setup (about 2 minutes)
+
+1. **Download** `SortJunk.exe` from the
+   [latest release](../../releases/latest). No installer and no Python
+   needed. (Optional: compare its checksum with `SHA256SUMS.txt` on the same
+   page.)
+2. **Give it a permanent home.** Make a folder such as
+   `Documents\SortJunk` and move `SortJunk.exe` into it. Don't leave it in
+   Downloads, or SortJunk will be sorting the folder it lives in.
+3. **Open it.** Double-click `SortJunk.exe`. If Windows shows "Windows
+   protected your PC", click **More info → Run anyway**. That appears because
+   the app is new and unsigned (see [SmartScreen](#a-note-on-smartscreen)).
+4. **Try it safely first.** Choose **Custom folder**, click **Browse...**,
+   and pick a *copy* of a messy folder. Click **Scan (preview only)**, look
+   through the list, then **Confirm and Apply Changes**. Try **Undo** to see
+   everything go back.
+5. **Use it for real.** Choose **Downloads** or **Screenshots**. SortJunk
+   finds those folders by itself, even if OneDrive has moved them. Scan,
+   check the preview, and apply.
+6. **Optional: read text in screenshots.** Install
+   [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) with its
+   default settings so Screenshots mode can sort receipts, errors, and chats.
+   SortJunk finds it automatically. Without it, screenshots are sorted by
+   month only.
+7. **Optional: turn on Auto-Clean.** Click **Auto-Clean...**, tick
+   **Clean up automatically**, choose daily or weekly and which folders, then
+   click **Save**. To stop it, untick the box and click Save again.
+
+**To uninstall,** turn off Auto-Clean (if you turned it on), then delete
+`SortJunk.exe` and the `%LOCALAPPDATA%\SortJunk` folder. Your sorted files
+stay where they are.
 
 ## Features
 
-- **Screenshots mode** — finds exact and near-duplicate screenshots (perceptual
-  hashing) and, when Tesseract OCR is available, sorts them into
-  `Receipts` / `Errors_Code` / `Chats` / `Uncategorized` by month, regardless
-  of how old they are. Without Tesseract, it falls back to date-only
-  categorization automatically.
-- **Downloads mode** — sorts loose top-level files by type into `PDF`,
-  `Docs`, `Images`, `Installers`, `Zip`, `Media`, `Others`, and leaves
-  in-progress downloads (`.crdownload`, `.part`, `.tmp`) alone. Any folder
-  you already had in Downloads is left completely alone — moved as a whole,
-  sealed unit into `My Folders`, never opened or reorganized. Files that
-  have sat untouched past the archive threshold (default 180 days) are
-  moved into `Storage/<category>` — plain files, not zipped.
-- **Finds your folders automatically** — the GUI pre-fills the target folder
-  for whichever mode you pick, and the CLI's `--target` is optional, both
-  via the real Windows known-folder API (so it's correct even when OneDrive
-  or a custom setup has moved/renamed Downloads or Screenshots). You can
-  always override it.
-- **Dry-run by default** — every run prints a full preview of what would
-  happen. Nothing on disk changes unless you pass `--apply` and confirm.
-- **Never deletes** — duplicates are flagged into `Duplicates_Found/` for you
-  to review, and in Downloads mode old files are moved (never deleted) into
-  `Storage/<category>` rather than sorted with the rest.
+- **Downloads mode** — sorts loose files by type into `PDF`, `Docs`,
+  `Images`, `Installers`, `Zip`, `Media`, and `Others`, and leaves in-progress
+  downloads (`.crdownload`, `.part`, `.tmp`) alone. Folders you already had in
+  Downloads are never opened or reorganized: by default they stay exactly
+  where they are, or — if you tick the option (`--move-folders`) — they're
+  moved whole into `My Folders`. Files untouched past the archive age
+  (default 180 days) go into `Storage/<category>` as plain files.
+- **Screenshots mode** — sorts screenshots into
+  `<month>/Receipts`, `Errors_Code`, `Chats`, or `Uncategorized`, using the
+  text in the image when Tesseract OCR is installed (it's found automatically
+  in its standard install folder) and by month alone when it isn't. Exact and
+  near-duplicates go to `Duplicates_Found/` for you to review, while the
+  oldest copy of each group is sorted normally.
+- **Custom mode** — tidies any folder you pick: files from all subfolders are
+  gathered into the same type folders, exact duplicates are set aside, files
+  past the archive age are zipped into `_Archive_<month>/` (each original is
+  removed only after its zip is written and verified), and folders left empty
+  are removed.
+- **Leaves new files alone** — in Downloads and Screenshots mode, anything
+  created in the last 24 hours is skipped so SortJunk never moves a file
+  you're still using. It gets sorted on a later run.
+- **Undo** — every applied run is logged. The Undo button (**Undo Last
+  Downloads / Screenshots / Custom folder Sort**) lists exactly what it will
+  reverse and asks you to confirm. It only undoes the last sort for the mode
+  and folder you have selected, so a newer sort elsewhere (or an auto-clean)
+  is never undone by mistake. A file is only moved back if it's still where
+  SortJunk put it and its original spot is free.
+- **Auto-Clean (opt-in)** — off until you turn it on under **Auto-Clean...**.
+  It adds a Windows Task Scheduler task for your account only (no admin
+  rights) that tidies Downloads and/or Screenshots daily or every Sunday at
+  12:00, or as soon as your PC is on after that. It uses your saved settings,
+  and every automatic clean-up can be reversed with Undo in that mode.
+  Activity is logged to `%LOCALAPPDATA%\SortJunk\auto-clean.log`. If you move
+  or replace `SortJunk.exe`, open Auto-Clean and click Save to point the task
+  at the new copy.
+- **OneDrive-aware** — "online-only" files are sorted by name and date
+  without being opened, so SortJunk never triggers a download of your cloud
+  files.
+- **Finds your folders automatically** — via the Windows known-folder API, so
+  it's correct even when OneDrive or a custom setup has moved Downloads or
+  Screenshots.
+- **Never deletes your files** — duplicates are set aside, and old Downloads
+  are moved into `Storage`. The only removals are Custom mode's verified
+  zip-then-remove archiving and folders left empty.
+- **Refuses dangerous folders** — a drive root, your whole user profile or
+  OneDrive, Windows / Program Files / ProgramData, AppData, or anything inside
+  a code project. Project folders found while scanning (git repos, Python
+  venvs, `node_modules`) are left completely untouched.
 
-## Download
+## Safety model
 
-Grab `SortJunk.exe` (or the zip with README + LICENSE) from the
-[latest release](../../releases/latest) — no Python needed. Checksums are in
-`SHA256SUMS.txt` on the same page.
+Scanning, categorizing, and planning are pure, read-only operations that
+produce a `Plan`; only a separate apply step is allowed to move, archive, or
+remove anything, and it only runs after you confirm. Every destination is
+validated to stay inside your target folder, filenames are sanitized
+(including Unicode tricks that disguise a file's real extension), symlinks and
+junctions are never followed or moved, and SortJunk never overwrites an
+existing file — it appends `(1)`, `(2)`, ... instead. The target folder is
+checked against the refused list before scanning and again right before
+anything moves. See [`target_guard.py`](src/sortjunk/target_guard.py),
+[`pathsafety.py`](src/sortjunk/pathsafety.py), and
+[`executor.py`](src/sortjunk/executor.py).
 
-## Requirements (running from source)
+## Privacy
 
-- Python 3.13+
-- Tesseract OCR (optional) — only needed for text-based categorization in
-  Screenshots mode. Without it, SortJunk still runs fine and sorts
-  screenshots by month instead.
-  [Install Tesseract for Windows](https://github.com/UB-Mannheim/tesseract/wiki)
-  and either add it to your `PATH` or pass `--tesseract-cmd`.
+SortJunk is fully local: it never makes a network call. The only things it
+stores outside the folder you point it at live in `%LOCALAPPDATA%\SortJunk`:
+your settings, a log of recent runs (used for undo; the newest 100 are kept),
+and the auto-clean log. Turning on Auto-Clean adds one Windows scheduled task
+named "SortJunk Auto-Clean"; turning it off removes it.
 
-## Installation
+## A note on SmartScreen
+
+Windows SmartScreen and some antivirus tools may warn about the `.exe` because
+it's unsigned and not yet widely downloaded. That's expected for a small
+open-source tool; click **More info → Run anyway**. The source is all here if
+you want to verify what it does, and every release is built by GitHub Actions
+from this repository.
+
+## Running from source
+
+Requires Python 3.13+. Tesseract OCR is optional
+([Windows installer](https://github.com/UB-Mannheim/tesseract/wiki)).
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e ".[dev]"
-```
-
-## Running the GUI
-
-```powershell
 .venv\Scripts\sortjunk-gui.exe
 ```
 
-Pick a mode, browse to a folder, click **Scan (Dry Run)** to preview, then
-**Confirm and Apply Changes** — which asks you to confirm a summary before
-touching anything. This is the same engine the CLI uses; nothing is
-duplicated or reimplemented for the GUI.
+### Command line
 
-## Building the standalone .exe
+Dry run by default — nothing is changed:
 
 ```powershell
-.venv\Scripts\pip install -e ".[build]"
-.venv\Scripts\python -m PyInstaller SortJunk.spec --noconfirm
+.venv\Scripts\python -m sortjunk.cli --mode downloads
+.venv\Scripts\python -m sortjunk.cli --mode custom --target "C:\Users\you\Desktop\Mess"
 ```
 
-The result is `dist\SortJunk.exe` — a single file with no Python
-installation required to run it, carrying the SortJunk icon and version
-metadata (product name, version, description) baked in. `build/` and `dist/`
-are gitignored, disposable output; `SortJunk.spec`, `SortJunk.ico`, and
-`version_info.txt` are checked in and hand-customized, so build from the
-spec rather than regenerating one from scratch.
-
-## Usage (command line)
-
-Dry run (default — nothing is changed):
-
-```powershell
-.venv\Scripts\python -m sortjunk.cli --mode downloads --target "C:\Users\you\Downloads"
-.venv\Scripts\python -m sortjunk.cli --mode screenshots --target "C:\Users\you\Pictures\Screenshots"
-```
-
-Apply the plan (moves/archives files, after an interactive confirmation):
-
-```powershell
-.venv\Scripts\python -m sortjunk.cli --mode downloads --target "C:\Users\you\Downloads" --apply
-```
-
-Common flags:
+Add `--apply` to make the changes (after a confirmation prompt).
 
 | Flag | Purpose |
 |---|---|
-| `--apply` | Actually move/archive files (default is dry-run only) |
-| `--yes` | Skip the interactive confirmation (for scripting) |
+| `--mode` | `downloads`, `screenshots`, or `custom` |
+| `--target PATH` | Folder to sort (optional for downloads/screenshots; required for custom) |
+| `--apply` | Actually make the changes (default is dry-run only) |
+| `--yes` | Skip the confirmation prompt (for scripting) |
+| `--undo` | Undo the last sort; add `--mode` (and `--target` for custom) to undo only that folder's last sort |
+| `--move-folders` | Downloads mode: also move existing folders into `My Folders` |
+| `--archive-after-days N` | Archive age for Downloads and Custom mode (default 180) |
 | `--skip-ocr` / `--fast` | Never run OCR, even if Tesseract is available |
-| `--archive-after-days N` | Age threshold for archiving in Downloads mode (default 180); has no effect in Screenshots mode |
-| `--tesseract-cmd PATH` | Point at `tesseract.exe` if it's not on `PATH` |
+| `--tesseract-cmd PATH` | Use this `tesseract.exe` instead of auto-detecting it |
 | `--max-files N` | Soft cap before SortJunk asks you to confirm a large scan |
 | `-v` / `--verbose` | Debug-level logging |
 
-Run `python -m sortjunk.cli --help` for the full list.
-
-## Safety model
-
-SortJunk is built so that a dry run structurally *cannot* touch your files:
-scanning, categorizing, and planning are pure, read-only operations that
-produce a `Plan`; only a separate, explicit apply step is allowed to move,
-archive, or remove anything, and it only runs after `--apply` plus your
-confirmation. Every destination path is validated to stay inside your
-target folder before any move happens, filenames are sanitized, and
-SortJunk never overwrites an existing file — it appends a `(1)`, `(2)`, ...
-suffix instead. See [`src/sortjunk/pathsafety.py`](src/sortjunk/pathsafety.py)
-and [`src/sortjunk/executor.py`](src/sortjunk/executor.py) for the details.
-
-## Privacy & security
-
-SortJunk is fully local: it never makes a network call, never phones home,
-and stores nothing outside the folder you point it at (plus the audit
-report next to it). There's nothing to configure and no account needed —
-the source is here to inspect if you want to verify that yourself.
-
-## Development
+### Development
 
 ```powershell
-.venv\Scripts\pip install -e ".[dev]"
 .venv\Scripts\python -m pytest
 .venv\Scripts\python -m ruff check src tests
 .venv\Scripts\python -m black src tests
 ```
 
+### Building the .exe
+
+```powershell
+.venv\Scripts\pip install -e ".[build]"
+.venv\Scripts\python -m PyInstaller packaging\SortJunk.spec --noconfirm
+```
+
+The result is `dist\SortJunk.exe`, a single file with the icon and version
+metadata baked in. Everything in `packaging/` is hand-customized and checked
+in; `build/` and `dist/` are disposable output.
+
+### Releasing
+
+Bump `version` in `pyproject.toml` and `packaging/version_info.txt`, commit,
+then push a matching tag (`git tag v0.1.0 && git push origin v0.1.0`). GitHub
+Actions runs the tests, builds `SortJunk.exe`, and publishes a GitHub Release
+with a zip and SHA-256 checksums.
+
 ## Project structure
 
 ```
 src/sortjunk/
-    cli.py            # CLI entry point: scan -> categorize -> plan -> (confirm) -> apply
-    gui.py             # Tkinter GUI, wraps the same engine as cli.py
-    scanner.py          # read-only folder walk
-    categorizer/          # screenshots.py (OCR + phash) and downloads.py (extension-based)
-    planner.py              # builds the dry-run Plan; never touches disk
-    executor.py               # the only module allowed to move/archive/delete files
-    pathsafety.py               # containment checks, filename sanitization, collision handling
-    archiver.py, ocr.py, hashing.py, models.py, config.py
-run_gui.py           # PyInstaller entry point (see Building the standalone .exe)
+    gui.py              Tkinter GUI
+    cli.py              command line
+    pipeline.py         shared read-only scan -> categorize -> plan
+    scanner.py          read-only folder walk
+    categorizer/        downloads.py (by type), screenshots.py (OCR + duplicates), custom.py
+    planner.py          builds the dry-run Plan; never touches disk
+    executor.py         the only module allowed to move/archive/remove files (and undo)
+    target_guard.py     refuses drive roots, system folders, user profile, projects
+    pathsafety.py       containment checks, filename sanitization, collisions, links
+    history.py          per-run log in %LOCALAPPDATA%, used for undo
+    settings.py         remembered options
+    scheduler.py        opt-in auto-clean task (Windows Task Scheduler, per user)
+    autoclean.py        headless run launched by that task (SortJunk.exe --auto-clean)
+    archiver.py, hashing.py, ocr.py, special_folders.py, models.py, config.py
+packaging/              PyInstaller spec, icon, version info, exe entry point
 tests/
 ```
 
 ## Roadmap
 
-- Code-sign the release `.exe` to reduce SmartScreen warnings
+- Code-sign the release `.exe` to reduce SmartScreen warnings.
 
-## Releasing
-
-Bump `version` in `pyproject.toml` and `version_info.txt`, commit, then push
-a matching tag (`git tag v0.1.0 && git push origin v0.1.0`). GitHub Actions
-runs the tests, builds `SortJunk.exe`, and publishes a GitHub Release.
-
-Not planned: cloud sync, a backend of any kind, or Mac/Linux support (this
-is a Windows-first tool — Task Scheduler and SmartScreen references are
-Windows-specific).
-
-## A note on SmartScreen
-
-Once this ships as a packaged `.exe`, Windows SmartScreen and some antivirus
-tools may flag it simply because it's unsigned and not yet widely
-downloaded — that's expected for a small open-source tool and not a sign of
-a problem. The source is public here so you can verify what it does.
+Not planned: cloud sync, accounts, or Mac/Linux support — SortJunk is a
+Windows tool and stays fully local.
 
 ## License
 

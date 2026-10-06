@@ -12,12 +12,9 @@ import logging
 import sys
 from pathlib import Path
 
-from . import executor, ocr, planner, scanner, special_folders
-from .categorizer import custom as custom_categorizer
-from .categorizer import downloads as downloads_categorizer
-from .categorizer import screenshots as screenshots_categorizer
+from . import executor, history, ocr, pipeline, scanner, special_folders, target_guard
 from .config import ScanConfig
-from .models import Plan
+from .models import ActionResult, Plan
 
 logger = logging.getLogger("sortjunk")
 
@@ -52,7 +49,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         prog="sortjunk",
         description="Scan and sort a Screenshots or Downloads folder. Dry-run by default.",
     )
-    parser.add_argument("--mode", choices=["screenshots", "downloads", "custom"], required=True)
+    parser.add_argument("--mode", choices=["screenshots", "downloads", "custom"])
+    parser.add_argument(
+        "--undo",
+        action="store_true",
+        help="Undo the last applied sort (asks first unless --yes). With --mode / --target, "
+        "only that folder's last sort.",
+    )
     parser.add_argument(
         "--target",
         type=Path,
@@ -66,6 +69,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--skip-ocr", action="store_true", help="Never run OCR, even if Tesseract is available."
     )
     parser.add_argument("--fast", action="store_true", help="Alias for --skip-ocr.")
+    parser.add_argument(
+        "--move-folders",
+        action="store_true",
+        help="Downloads mode: also move folders you already have into 'My Folders'.",
+    )
     parser.add_argument("--archive-after-days", type=_bounded_int(1, 3650), default=180)
     parser.add_argument("--max-ocr-size-mb", type=int, default=20)
     parser.add_argument("--max-files", type=int, default=50_000)
@@ -88,10 +96,8 @@ def _config_from_args(args: argparse.Namespace) -> ScanConfig:
         max_files=args.max_files,
         tesseract_cmd=args.tesseract_cmd,
         verbose=args.verbose,
-        # Custom is a deliberate one-off cleanup: no freshness hold-back,
-        # and it's the only mode that prunes folders left empty by sorting.
-        min_age_hours=0 if args.mode == "custom" else 24,
-        remove_empty_folders=(args.mode == "custom"),
+        move_existing_folders=args.move_folders,
+        **pipeline.mode_defaults(args.mode),
     )
 
 
@@ -115,12 +121,58 @@ def _confirm(config: ScanConfig, plan: Plan) -> bool:
     return answer == "y"
 
 
+def _print_failures(results: list[ActionResult]) -> None:
+    failed = [r for r in results if not r.succeeded]
+    for r in failed[:50]:
+        print(f"  FAILED {r.source}: {r.error}")
+    if len(failed) > 50:
+        print(f"  ... and {len(failed) - 50} more")
+
+
+def _run_undo(args: argparse.Namespace) -> int:
+    # With --mode, only that mode's (and folder's) last sort is undone, never a
+    # newer run of some other mode.
+    target = args.target
+    if args.mode is not None and target is None:
+        lookup = _DEFAULT_FOLDER_LOOKUP.get(args.mode)
+        target = lookup() if lookup else None
+    log_path = history.latest_run(mode=args.mode, target_root=target)
+    if log_path is None:
+        scope = f" for {args.mode} mode" if args.mode else ""
+        print(f"Nothing to undo{scope} -- no applied runs found.")
+        return 1
+    run = history.load_run(log_path)
+    when = run.applied_at.astimezone().strftime("%Y-%m-%d %H:%M")
+    print(
+        f"Last run: {run.mode} mode on {run.target_root} at {when} "
+        f"({run.undoable_count} change(s))."
+    )
+    if not args.yes:
+        if input("Undo it? [y/N] ").strip().lower() != "y":
+            print("Aborted -- nothing was changed.")
+            return 1
+
+    results = executor.undo(run)
+    history.mark_undone(log_path)
+    succeeded = sum(1 for r in results if r.succeeded)
+    failed = len(results) - succeeded
+    print(f"\nUndo finished. {succeeded} restored, {failed} could not be restored.")
+    _print_failures(results)
+    return 0 if failed == 0 else 2
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = _build_arg_parser().parse_args(argv)
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+    if args.undo:
+        return _run_undo(args)
+    if args.mode is None:
+        parser.error("--mode is required (or use --undo)")
 
     if args.target is None:
         lookup = _DEFAULT_FOLDER_LOOKUP.get(args.mode)
@@ -141,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
             f"Target folder does not exist or is not a directory: {config.target_root}",
             file=sys.stderr,
         )
+        return 1
+
+    unsafe_reason = target_guard.unsafe_target_reason(config.target_root)
+    if unsafe_reason is not None:
+        print(f"Refusing to sort this folder: {unsafe_reason}", file=sys.stderr)
         return 1
 
     if config.mode == "screenshots":
@@ -174,25 +231,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     print(f"Scanning {config.target_root} ...")
-    existing_dirs: list[Path] = []
-    if config.mode == "downloads":
-        records = scanner.scan(config.target_root, max_files=config.max_files, recursive=False)
-        existing_dirs = scanner.list_top_level_dirs(
-            config.target_root,
-            excluded_names=downloads_categorizer.OWNED_TOP_LEVEL_NAMES,
-            excluded_prefixes=("_Archive_",),
-        )
-    else:
-        records = scanner.scan(config.target_root, max_files=config.max_files)
-
-    if config.mode == "screenshots":
-        decisions = screenshots_categorizer.categorize(records, config)
-    elif config.mode == "custom":
-        decisions = custom_categorizer.categorize(records, config)
-    else:
-        decisions = downloads_categorizer.categorize(records, config)
-
-    plan = planner.build_plan(records, decisions, config, existing_dirs=existing_dirs)
+    plan = pipeline.build_plan(config)
 
     if not config.apply:
         _print_summary(plan)
@@ -204,9 +243,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     results = executor.apply(plan)
+    log_path = history.save_run(plan, results)
     succeeded = sum(1 for r in results if r.succeeded)
     failed = len(results) - succeeded
     print(f"\nDone. {succeeded} action(s) succeeded, {failed} failed.")
+    _print_failures(results)
+    if log_path is not None:
+        print(f"Log saved to {log_path}. Run with --undo to reverse this run.")
     return 0 if failed == 0 else 2
 
 

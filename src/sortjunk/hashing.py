@@ -9,8 +9,8 @@ import hashlib
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
 
+from .config import ProgressCallback
 from .models import FileRecord
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,27 @@ def sha256_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def find_exact_duplicates(records: list[FileRecord]) -> dict[Path, str]:
+def find_exact_duplicates(
+    records: list[FileRecord], on_progress: ProgressCallback | None = None
+) -> dict[Path, str]:
     """sha256-based exact duplicates, across any file type. Returns path -> group_id
     for groups with more than one member; unpaired files are simply absent.
+
+    Only files that share their exact size with another file are hashed --
+    a file with a unique size can't have a duplicate, and skipping it avoids
+    reading every large video or installer end to end.
     """
-    groups: dict[str, list[FileRecord]] = defaultdict(list)
+    by_size: dict[int, list[FileRecord]] = defaultdict(list)
     for record in records:
+        if record.cloud_only:
+            continue  # hashing would download it from OneDrive
+        by_size[record.size_bytes].append(record)
+    candidates = [r for group in by_size.values() if len(group) > 1 for r in group]
+
+    groups: dict[str, list[FileRecord]] = defaultdict(list)
+    for i, record in enumerate(candidates):
+        if on_progress is not None:
+            on_progress("Checking for duplicates", i, len(candidates))
         try:
             groups[sha256_of(record.path)].append(record)
         except OSError as exc:
@@ -49,23 +64,51 @@ def find_exact_duplicates(records: list[FileRecord]) -> dict[Path, str]:
     return result
 
 
-def perceptual_hash(path: Path) -> Any | None:
-    """Near-duplicate fingerprint via average hash. None if the file isn't a readable image."""
+def pick_keepers(records: list[FileRecord], groups: dict[Path, str]) -> set[Path]:
+    """One file per duplicate group that stays where it is: the oldest copy.
+
+    Ties break on the shorter name (the original, not "name (1).png"), then
+    on path, so the choice is deterministic across runs.
+    """
+    best: dict[str, FileRecord] = {}
+    for record in records:
+        group_id = groups.get(record.path)
+        if group_id is None:
+            continue
+        current = best.get(group_id)
+        if current is None or _keeper_key(record) < _keeper_key(current):
+            best[group_id] = record
+    return {record.path for record in best.values()}
+
+
+def _keeper_key(record: FileRecord) -> tuple:
+    return (record.modified_at, len(record.path.name), str(record.path))
+
+
+def perceptual_hash(path: Path) -> int | None:
+    """Near-duplicate fingerprint: a 64-bit average hash. None if not a readable image.
+
+    Same algorithm (and bit-for-bit the same result) as imagehash.average_hash:
+    shrink to 8x8 grayscale, then one bit per pixel brighter than the mean.
+    Done directly in Pillow so the app doesn't ship numpy/scipy/PyWavelets.
+    """
     try:
-        import imagehash
         from PIL import Image
     except ImportError:
-        logger.warning("imagehash/Pillow not available; skipping perceptual hashing.")
+        logger.warning("Pillow not available; skipping perceptual hashing.")
         return None
 
     try:
         with Image.open(path) as img:
-            return imagehash.average_hash(img)
+            small = img.convert("L").resize((8, 8), Image.Resampling.LANCZOS)
+            pixels = small.tobytes()
     except Exception as exc:  # noqa: BLE001 - any decode failure just means "can't hash this one"
         logger.warning("Could not compute perceptual hash for %s: %s", path, exc)
         return None
 
+    mean = sum(pixels) / len(pixels)
+    return sum(1 << i for i, value in enumerate(pixels) if value > mean)
 
-def hamming_distance(a: Any, b: Any) -> int:
-    """imagehash hash objects support subtraction as Hamming distance."""
-    return a - b
+
+def hamming_distance(a: int, b: int) -> int:
+    return (a ^ b).bit_count()

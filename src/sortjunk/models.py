@@ -30,6 +30,9 @@ class FileRecord:
     size_bytes: int
     modified_at: datetime
     created_at: datetime
+    # OneDrive "online-only": reading its contents would download it, so it's
+    # sorted by name/date only -- never hashed, OCR'd, or zipped.
+    cloud_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,7 @@ class Plan:
     target_root: Path
     generated_at: datetime
     actions: list[PlannedAction] = field(default_factory=list)
+    cloud_only_files: int = 0
 
     @property
     def total_files(self) -> int:

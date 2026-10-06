@@ -4,10 +4,11 @@ __pycache__/
 *.egg-info/
 .eggs/
 
-# Build / packaging artifacts (future PyInstaller work)
+# PyInstaller output (packaging/ itself is hand-customized and tracked)
 build/
 dist/
-# SortJunk.spec is hand-customized (icon, version info) -- tracked, not disposable.
+# Icon design canvas -- local source only, needs a viewer runtime not in the repo
+packaging/*.dc.html
 
 # Virtual environments
 .venv/
@@ -36,5 +37,6 @@ desktop.ini
 report_*.json
 _manual_test/
 
-# Claude Code local session state
+# Claude Code local session state / tooling
 .claude/
+.claudeignore

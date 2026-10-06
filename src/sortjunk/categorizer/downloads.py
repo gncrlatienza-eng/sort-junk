@@ -7,8 +7,12 @@ import.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 from ..config import ScanConfig
 from ..models import CategoryDecision, FileRecord
+from ..pathsafety import paths_equal
 from ..planner import DUPLICATES_SUBDIR, EXISTING_FOLDERS_SUBDIR, STORAGE_SUBDIR
 
 IN_PROGRESS_SUFFIXES = {".crdownload", ".part", ".tmp"}
@@ -45,11 +49,26 @@ OWNED_TOP_LEVEL_NAMES = frozenset(
 )
 
 
+def _running_exe() -> Path | None:
+    """The packaged SortJunk.exe, if that's what is running (None from source)."""
+    return Path(sys.executable) if getattr(sys, "frozen", False) else None
+
+
 def categorize(records: list[FileRecord], config: ScanConfig) -> list[CategoryDecision]:
     """Sort by extension; in-progress downloads are flagged to be skipped entirely."""
+    own_exe = _running_exe()
     decisions = []
     for record in records:
         suffix = record.path.suffix.lower()
+
+        if own_exe is not None and paths_equal(record.path, own_exe):
+            # Moving SortJunk.exe would break its own scheduled auto-clean.
+            decisions.append(
+                CategoryDecision(
+                    record=record, category="Installers", skip_reason="this is SortJunk itself"
+                )
+            )
+            continue
 
         if suffix in IN_PROGRESS_SUFFIXES:
             decisions.append(

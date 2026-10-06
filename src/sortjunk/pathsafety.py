@@ -28,6 +28,11 @@ _RESERVED_NAMES = {
 _INVALID_CHARS = '<>:"|?*'
 _MAX_NAME_LENGTH = 200
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+# OFFLINE | RECALL_ON_OPEN | RECALL_ON_DATA_ACCESS
+_CLOUD_ONLY_ATTRIBUTES = 0x1000 | 0x40000 | 0x400000
+# IO_REPARSE_TAG_CLOUD and its CLOUD_1..CLOUD_F variants differ only in bits 12-15.
+_IO_REPARSE_TAG_CLOUD = 0x9000001A
+_IO_REPARSE_TAG_CLOUD_MASK = 0xFFFF0FFF
 
 
 def sanitize_filename(name: str) -> str:
@@ -96,11 +101,23 @@ def resolve_and_validate_containment(root: Path, candidate: Path) -> Path:
     return candidate_resolved
 
 
+def is_cloud_only(st: os.stat_result) -> bool:
+    """True if the file's contents aren't on this PC (OneDrive "online-only").
+
+    Opening such a file makes Windows download it, so callers must never
+    read it -- moving it within the synced folder is fine and stays cheap.
+    """
+    attrs = getattr(st, "st_file_attributes", 0)
+    return bool(attrs & _CLOUD_ONLY_ATTRIBUTES)
+
+
 def is_unsafe_link(path: Path) -> bool:
     """True if `path` is a symlink or a Windows NTFS junction/reparse point.
 
     `Path.is_symlink()` alone does not detect junctions on Windows, so this
-    also inspects the file's reparse-point attribute directly.
+    also inspects the file's reparse-point attribute directly. Cloud-sync
+    placeholders (OneDrive) are reparse points too, but they're ordinary
+    files/folders, not links elsewhere -- those are allowed.
     """
     if path.is_symlink():
         return True
@@ -109,7 +126,10 @@ def is_unsafe_link(path: Path) -> bool:
     except OSError:
         return False
     attrs = getattr(st, "st_file_attributes", 0)
-    return bool(attrs & _FILE_ATTRIBUTE_REPARSE_POINT)
+    if not attrs & _FILE_ATTRIBUTE_REPARSE_POINT:
+        return False
+    tag = getattr(st, "st_reparse_tag", 0)
+    return (tag & _IO_REPARSE_TAG_CLOUD_MASK) != _IO_REPARSE_TAG_CLOUD
 
 
 def resolve_collision(dest: Path, max_attempts: int = 10_000) -> Path:

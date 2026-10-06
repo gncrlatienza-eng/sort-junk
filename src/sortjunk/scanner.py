@@ -12,9 +12,11 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .config import ProgressCallback
 from .models import FileRecord
-from .pathsafety import is_unsafe_link
+from .pathsafety import is_cloud_only, is_unsafe_link
 from .planner import DUPLICATES_SUBDIR
+from .target_guard import is_project_dir
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,12 @@ def list_top_level_dirs(
     return dirs
 
 
-def scan(root: Path, max_files: int | None = None, recursive: bool = True) -> list[FileRecord]:
+def scan(
+    root: Path,
+    max_files: int | None = None,
+    recursive: bool = True,
+    on_progress: ProgressCallback | None = None,
+) -> list[FileRecord]:
     """Walk `root` recursively and return a FileRecord for every regular file.
 
     Symlinks and Windows junctions/reparse points are skipped entirely --
@@ -122,6 +129,11 @@ def scan(root: Path, max_files: int | None = None, recursive: bool = True) -> li
                 if entry.is_dir(follow_symlinks=False):
                     if is_root_level and (not recursive or _is_excluded_top_level(entry.name)):
                         continue
+                    if is_project_dir(entry_path):
+                        # A repo / venv / node_modules: its layout matters, so it's
+                        # left whole -- none of its files are ever recorded or moved.
+                        logger.info("Skipping project folder: %s", entry_path)
+                        continue
                     stack.append(entry_path)
                     continue
                 if not entry.is_file(follow_symlinks=False):
@@ -142,9 +154,16 @@ def scan(root: Path, max_files: int | None = None, recursive: bool = True) -> li
                     relative_path=str(entry_path.relative_to(root)),
                     size_bytes=st.st_size,
                     modified_at=datetime.fromtimestamp(st.st_mtime, tz=UTC),
-                    created_at=datetime.fromtimestamp(st.st_ctime, tz=UTC),
+                    # st_ctime as creation time is deprecated on Windows (3.12+).
+                    created_at=datetime.fromtimestamp(
+                        getattr(st, "st_birthtime", st.st_ctime), tz=UTC
+                    ),
+                    cloud_only=is_cloud_only(st),
                 )
             )
+
+            if on_progress is not None and len(records) % 250 == 0:
+                on_progress("Listing files", len(records), 0)
 
             if max_files is not None and len(records) >= max_files:
                 logger.warning("Reached max_files cap (%d); stopping scan early.", max_files)

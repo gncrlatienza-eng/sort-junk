@@ -26,6 +26,8 @@ EXISTING_FOLDERS_SUBDIR = "My Folders"
 
 
 def _is_archive_eligible(record: FileRecord, config: ScanConfig) -> bool:
+    if record.cloud_only and config.mode == "custom":
+        return False  # zipping reads the file, which would download it from OneDrive
     age = datetime.now(UTC) - record.modified_at
     return age >= timedelta(days=config.archive_after_days)
 
@@ -118,6 +120,12 @@ def build_plan(
     )
 
     decisions_by_path = {d.record.path: d for d in decisions}
+    # The copy each duplicate group keeps in place, to name it in the reason.
+    keeper_names = {
+        d.dup_group_id: d.record.relative_path
+        for d in decisions
+        if d.dup_group_id is not None and not d.is_duplicate
+    }
 
     for record in records:
         decision = decisions_by_path[record.path]
@@ -174,7 +182,11 @@ def build_plan(
                     destination=destination,
                     category=decision.category,
                     size_bytes=record.size_bytes,
-                    reason=f"duplicate of group {decision.dup_group_id}",
+                    reason=(
+                        f"duplicate of {keeper_names[decision.dup_group_id]} (that copy is kept)"
+                        if decision.dup_group_id in keeper_names
+                        else "duplicate"
+                    ),
                     ocr_used=decision.ocr_used,
                     dup_group_id=decision.dup_group_id,
                 )

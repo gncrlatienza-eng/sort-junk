@@ -7,3 +7,7 @@ class SortJunkError(Exception):
 
 class PathSafetyError(SortJunkError):
     """Raised when a computed destination path fails a safety check."""
+
+
+class ScanCancelled(SortJunkError):
+    """Raised from a progress callback to stop a scan early (nothing is changed)."""

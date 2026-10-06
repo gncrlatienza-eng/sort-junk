@@ -346,3 +346,22 @@ def test_ocr_unavailable_path_end_to_end(tmp_path, make_file):
     action = plan.actions[0]
     assert action.ocr_used is False
     assert action.category == "Uncategorized"
+
+
+def test_junk_file_at_the_archive_path_is_never_lost_or_trusted(tmp_path, make_file):
+    """zipfile appends a fresh archive after non-zip bytes rather than failing --
+    the original is only removed once that archive verifies and holds the file."""
+    make_file("Custom/old.pdf", content=b"precious", age_days=200)
+    target = tmp_path / "Custom"
+    config = ScanConfig(mode="custom", target_root=target, archive_after_days=180)
+    plan = _custom_plan_for(target, config)
+    zip_path = plan.actions[0].destination
+    zip_path.parent.mkdir(parents=True)
+    zip_path.write_bytes(b"this is not a zip file")
+
+    results = executor.apply(plan)
+
+    assert results[0].succeeded
+    assert zip_path.read_bytes().startswith(b"this is not a zip file")
+    with zipfile.ZipFile(zip_path) as zf:
+        assert zf.read("old.pdf") == b"precious"

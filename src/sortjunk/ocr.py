@@ -6,6 +6,9 @@ Screenshots mode uses this; Downloads mode never imports it.
 from __future__ import annotations
 
 import logging
+import os
+import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +24,27 @@ class TesseractStatus:
     error: str | None = None
 
 
+def find_tesseract(env: Mapping[str, str] | None = None) -> str | None:
+    """Locate tesseract.exe: on PATH, else the standard Windows install folders.
+
+    The official Windows installer doesn't add itself to PATH by default, so
+    without this most users who did install Tesseract would never get OCR.
+    """
+    on_path = shutil.which("tesseract")
+    if on_path:
+        return on_path
+    env = os.environ if env is None else env
+    for var in ("ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        base = env.get(var)
+        if not base:
+            continue
+        for sub in ("Tesseract-OCR", "Programs/Tesseract-OCR"):
+            candidate = Path(base) / sub / "tesseract.exe"
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
 def detect_tesseract(tesseract_cmd: str | None = None) -> TesseractStatus:
     """Check once whether a working Tesseract binary is available.
 
@@ -33,6 +57,7 @@ def detect_tesseract(tesseract_cmd: str | None = None) -> TesseractStatus:
     except ImportError as exc:
         return TesseractStatus(available=False, error=f"pytesseract not installed: {exc}")
 
+    tesseract_cmd = tesseract_cmd or find_tesseract()
     if tesseract_cmd:
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 

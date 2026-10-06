@@ -18,7 +18,8 @@ from . import downloads as downloads_categorizer
 
 def categorize(records: list[FileRecord], config: ScanConfig) -> list[CategoryDecision]:
     base_decisions = downloads_categorizer.categorize(records, config)
-    dup_groups = hashing.find_exact_duplicates(records)
+    dup_groups = hashing.find_exact_duplicates(records, on_progress=config.on_progress)
+    keepers = hashing.pick_keepers(records, dup_groups)
 
     decisions: list[CategoryDecision] = []
     for decision in base_decisions:
@@ -27,7 +28,7 @@ def categorize(records: list[FileRecord], config: ScanConfig) -> list[CategoryDe
             CategoryDecision(
                 record=decision.record,
                 category=decision.category,
-                is_duplicate=dup_group_id is not None,
+                is_duplicate=dup_group_id is not None and decision.record.path not in keepers,
                 dup_group_id=dup_group_id,
                 skip_reason=decision.skip_reason,
             )
