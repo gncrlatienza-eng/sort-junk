@@ -16,7 +16,7 @@ from pathlib import Path
 from .config import ProgressCallback
 from .models import FileRecord
 from .pathsafety import is_cloud_only, is_unsafe_link
-from .planner import DUPLICATES_SUBDIR
+from .planner import DUPLICATES_SUBDIR, MONTH_ABBREVIATIONS
 from .target_guard import is_project_dir
 
 logger = logging.getLogger(__name__)
@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 # Duplicates_Found on every subsequent run.
 _EXCLUDED_TOP_LEVEL_NAMES = {DUPLICATES_SUBDIR}
 _EXCLUDED_TOP_LEVEL_PREFIXES = ("_Archive_",)
-# Screenshots mode's own `YYYY-MM/<Category>` output. Skipped on reruns so
-# already-sorted screenshots aren't re-hashed and re-OCR'd every scan.
-_MONTH_FOLDER = re.compile(r"\d{4}-\d{2}")
+# Screenshots mode's own `Mon-YYYY/<Category>` output (`YYYY-MM` before
+# v0.1.3). Skipped on reruns so already-sorted screenshots aren't re-hashed
+# and re-OCR'd every scan.
+_MONTH_FOLDER = re.compile(rf"\d{{4}}-\d{{2}}|(?:{'|'.join(MONTH_ABBREVIATIONS)})-\d{{4}}")
 
 
 def _is_excluded_top_level(name: str, skip_month_folders: bool = False) -> bool:
@@ -118,7 +119,8 @@ def scan(
     instead.
 
     `skip_month_folders=True` (Screenshots mode) also skips top-level
-    `YYYY-MM` folders -- that mode's own already-sorted output.
+    month folders (`Mon-YYYY`, or `YYYY-MM` from older versions) -- that
+    mode's own already-sorted output.
     """
     root = root.resolve(strict=True)
     records: list[FileRecord] = []

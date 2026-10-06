@@ -94,7 +94,8 @@ def test_screenshots_scan_skips_already_sorted_month_folders(tmp_path, make_file
     from sortjunk import pipeline
 
     make_file("S/new.png", age_days=3)
-    make_file("S/2025-03/Chats/old.png", age_days=3)
+    make_file("S/Mar-2025/Chats/old.png", age_days=3)
+    make_file("S/2025-03/Chats/legacy.png", age_days=3)  # v0.1.x folder name
     make_file("S/Edits/kept.png", age_days=3)
     config = ScanConfig(
         mode="screenshots",
@@ -108,6 +109,13 @@ def test_screenshots_scan_skips_already_sorted_month_folders(tmp_path, make_file
     names = sorted(a.source.name for a in plan.actions)
     assert names == ["kept.png", "new.png"]
     assert scanner.estimate_file_count(tmp_path / "S", skip_month_folders=True) == 2
+
+
+def test_screenshot_month_folder_name_is_month_and_year():
+    from sortjunk.planner import month_folder_name
+
+    assert month_folder_name(datetime(2026, 12, 3, tzinfo=UTC)) == "Dec-2026"
+    assert month_folder_name(datetime(2026, 1, 31, tzinfo=UTC)) == "Jan-2026"
 
 
 def test_custom_scan_still_includes_month_named_folders(tmp_path, make_file):

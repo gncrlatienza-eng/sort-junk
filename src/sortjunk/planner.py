@@ -82,10 +82,32 @@ def _archive_zip_path(config: ScanConfig, record: FileRecord) -> Path:
     return resolve_and_validate_containment(config.target_root, candidate)
 
 
+# Fixed English names: strftime("%b") follows the PC's locale, which would
+# give the same month a different folder name on different machines.
+MONTH_ABBREVIATIONS = (
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+)
+
+
+def month_folder_name(when: datetime) -> str:
+    """Screenshots-mode month folder, e.g. "Dec-2026"."""
+    return f"{MONTH_ABBREVIATIONS[when.month - 1]}-{when.year}"
+
+
 def _category_subpath(decision: CategoryDecision, config: ScanConfig) -> str:
     if config.mode == "screenshots":
-        month = decision.record.modified_at.strftime("%Y-%m")
-        return f"{month}/{decision.category}"
+        return f"{month_folder_name(decision.record.modified_at)}/{decision.category}"
     return decision.category
 
 

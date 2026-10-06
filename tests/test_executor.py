@@ -101,7 +101,7 @@ def test_screenshots_old_files_sort_per_month_not_zip(tmp_path, make_file):
     assert not (target / "old.png").exists()
 
     month = results[0].destination.parent.parent.name
-    assert re.fullmatch(r"\d{4}-\d{2}", month)
+    assert re.fullmatch(r"[A-Z][a-z]{2}-\d{4}", month)
     assert (target / month / "Uncategorized" / "old.png").exists()
     assert not any(target.rglob("*.zip"))
 
