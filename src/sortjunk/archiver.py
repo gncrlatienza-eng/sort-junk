@@ -30,6 +30,10 @@ def write_archive(zip_path: Path, root: Path, sources: list[Path]) -> list[Path]
     run) is left out of that list -- the caller must not delete it, since
     it was never stored anywhere.
     """
+    if not sources:
+        # e.g. every source was refused as a symlink -- don't leave an empty zip behind.
+        return []
+
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     mode = "a" if zip_path.exists() else "w"
 

@@ -33,3 +33,11 @@ def test_write_archive_excludes_arcname_already_present(tmp_path, make_file):
     assert written == []
     with zipfile.ZipFile(zip_path) as zf:
         assert zf.read("dup.txt") == b"original"
+
+
+def test_nothing_to_archive_creates_no_zip(tmp_path):
+    zip_path = tmp_path / "_Archive_2024-01" / "_Archive_2024-01.zip"
+
+    assert archiver.write_archive(zip_path, tmp_path, []) == []
+    assert not zip_path.exists()
+    assert not zip_path.parent.exists()
