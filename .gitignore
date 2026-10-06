@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Build / packaging artifacts (future PyInstaller work)
+build/
+dist/
+# SortJunk.spec is hand-customized (icon, version info) -- tracked, not disposable.
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and env files
+*.log
+.env
+.env.*
+
+# Runtime output from running SortJunk
+/reports/
+report_*.json
+_manual_test/
+
+# Claude Code local session state
+.claude/

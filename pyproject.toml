@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sortjunk"
+version = "0.1.0"
+description = "Local, safety-first cleanup tool for cluttered Screenshots and Downloads folders."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+dependencies = [
+    "Pillow>=10.0",
+    "imagehash>=4.3",
+    "pytesseract>=0.3.10",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "black>=24.0", "ruff>=0.6"]
+build = ["pyinstaller>=6.0"]
+
+[project.scripts]
+sortjunk = "sortjunk.cli:main"
+sortjunk-gui = "sortjunk.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py313"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+# S101: allow `assert` in tests; the whole tests/ dir is excluded below instead.
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
