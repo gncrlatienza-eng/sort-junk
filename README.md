@@ -32,6 +32,21 @@ It's built to be trusted with your files:
 Optionally, it can keep things tidy for you with a weekly or daily
 **Auto-Clean** that you switch on yourself.
 
+## How it works
+
+**1. Scan and preview.** Pick a folder and SortJunk lists every file, where it
+will go, and why. Nothing moves until you click *Confirm and Apply Changes*.
+
+![SortJunk preview window](pictures/1.jpg)
+
+**2. Before:** a typical messy Downloads folder.
+
+![Downloads folder before sorting](pictures/2.jpg)
+
+**3. After:** everything filed into tidy type folders.
+
+![Downloads folder after sorting](pictures/3.jpg)
+
 ## Setup (about 2 minutes)
 
 1. **Download** `SortJunk.exe` from the
