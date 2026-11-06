@@ -1,8 +1,16 @@
 # SortJunk
 
-**A safe, one-click tidy-up for messy Windows folders.**
+**A safe, one-click tidy-up for messy Windows folders.** Preview every move, undo with one click, and it runs fully offline.
 
-> **Status: preview (v0.1).** Works today; feedback welcome via Issues.
+[![CI](https://github.com/gncrlatienza-eng/sort-junk/actions/workflows/ci.yml/badge.svg)](https://github.com/gncrlatienza-eng/sort-junk/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/gncrlatienza-eng/sort-junk)](https://github.com/gncrlatienza-eng/sort-junk/releases/latest)
+![Windows](https://img.shields.io/badge/platform-Windows-0078D6)
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**[Download SortJunk.exe](https://github.com/gncrlatienza-eng/sort-junk/releases/latest)** (a single file, no install). Feedback is welcome through [Issues](../../issues).
+
+![SortJunk preview window](pictures/1.jpg)
 
 ## What is SortJunk?
 
@@ -35,9 +43,8 @@ Optionally, it can keep things tidy for you with a weekly or daily
 ## How it works
 
 **1. Scan and preview.** Pick a folder and SortJunk lists every file, where it
-will go, and why. Nothing moves until you click *Confirm and Apply Changes*.
-
-![SortJunk preview window](pictures/1.jpg)
+will go, and why (the window shown at the top). Nothing moves until you click
+*Confirm and Apply Changes*.
 
 **2. Before:** a typical messy Downloads folder.
 
@@ -153,6 +160,19 @@ it's unsigned and not yet widely downloaded. That's expected for a small
 open-source tool; click **More info → Run anyway**. The source is all here if
 you want to verify what it does, and every release is built by GitHub Actions
 from this repository.
+
+## Under the hood
+
+- **Read-only planning, separate apply step.** Scanning, categorizing and planning never touch the disk.
+  [`executor.py`](src/sortjunk/executor.py) is the only module allowed to move files, and every move is
+  logged so it can be undone.
+- **Defensive file handling.** Path containment checks, filename sanitization (including Unicode tricks that
+  disguise extensions), no following of symlinks or junctions, and no overwrites.
+- **Windows-native.** Uses the Known Folder API to find Downloads and Screenshots even when OneDrive has moved them,
+  skips OneDrive "online-only" files without downloading them, and sets up Auto-Clean as a per-user scheduled task
+  that needs no admin rights.
+- **Tested and released from CI.** 110+ pytest tests and ruff run on every push. Each release is built on GitHub Actions
+  from a version tag and published with SHA-256 checksums.
 
 ## Running from source
 

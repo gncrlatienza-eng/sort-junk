@@ -40,3 +40,4 @@ _manual_test/
 # Claude Code local session state / tooling
 .claude/
 .claudeignore
+.playwright-mcp/
